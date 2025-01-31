@@ -1,4 +1,4 @@
-import { inject, Injectable, PLATFORM_ID, REQUEST } from '@angular/core';
+import { inject, Injectable, PLATFORM_ID, REQUEST, RESPONSE_INIT } from '@angular/core';
 import { DOCUMENT, isPlatformBrowser } from '@angular/common';
 
 @Injectable({
@@ -8,6 +8,7 @@ export class SsrCookieService {
   private readonly document = inject(DOCUMENT);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly request = inject(REQUEST, { optional: true });
+  private readonly response = inject(RESPONSE_INIT, { optional: true });
   private readonly documentIsAccessible: boolean = isPlatformBrowser(this.platformId);
 
   /**
@@ -168,10 +169,6 @@ export class SsrCookieService {
     sameSite?: 'Lax' | 'None' | 'Strict',
     partitioned?: boolean
   ): void {
-    if (!this.documentIsAccessible) {
-      return;
-    }
-
     if (typeof expiresOrOptions === 'number' || expiresOrOptions instanceof Date || path || domain || secure || sameSite) {
       const optionsBody = {
         expires: expiresOrOptions,
@@ -229,7 +226,13 @@ export class SsrCookieService {
       cookieString += 'Partitioned;';
     }
 
-    this.document.cookie = cookieString;
+    if (this.documentIsAccessible) {
+      this.document.cookie = cookieString;
+    } else if (this.response) {
+      const headers = new Headers(this.response.headers);
+      headers.append('Set-Cookie', cookieString);
+      this.response.headers = headers;
+    }
   }
 
   /**
@@ -245,9 +248,6 @@ export class SsrCookieService {
    * @since: 1.0.0
    */
   delete(name: string, path?: string, domain?: string, secure?: boolean, sameSite: 'Lax' | 'None' | 'Strict' = 'Lax'): void {
-    if (!this.documentIsAccessible) {
-      return;
-    }
     const expiresDate = new Date('Thu, 01 Jan 1970 00:00:01 GMT');
     this.set(name, '', { expires: expiresDate, path, domain, secure, sameSite });
   }
@@ -264,10 +264,6 @@ export class SsrCookieService {
    * @since: 1.0.0
    */
   deleteAll(path?: string, domain?: string, secure?: boolean, sameSite: 'Lax' | 'None' | 'Strict' = 'Lax'): void {
-    if (!this.documentIsAccessible) {
-      return;
-    }
-
     const cookies: any = this.getAll();
 
     for (const cookieName in cookies) {
